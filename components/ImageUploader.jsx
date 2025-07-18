@@ -71,6 +71,15 @@ const CnicCamera = ({ onCapture, onClose }) => {
   const startCamera = useCallback(async () => {
     try {
       setError(null);
+      setIsStreaming(false);
+      
+      // Stop any existing stream first
+      if (videoRef.current && videoRef.current.srcObject) {
+        const tracks = videoRef.current.srcObject.getTracks();
+        tracks.forEach(track => track.stop());
+        videoRef.current.srcObject = null;
+      }
+  
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: 'environment', // Use back camera
@@ -78,21 +87,29 @@ const CnicCamera = ({ onCapture, onClose }) => {
           height: { ideal: 1080, min: 480 }
         }
       });
-
+  
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         
         // Wait for video to load
         videoRef.current.onloadedmetadata = () => {
           console.log('Video loaded, dimensions:', videoRef.current.videoWidth, 'x', videoRef.current.videoHeight);
-          setIsStreaming(true);
+          videoRef.current.play().then(() => {
+            setIsStreaming(true);
+          }).catch((playError) => {
+            console.error('Error playing video:', playError);
+            setError('Unable to start camera playback.');
+          });
         };
         
-        videoRef.current.play();
+        videoRef.current.onerror = (error) => {
+          console.error('Video error:', error);
+          setError('Camera error occurred. Please try again.');
+        };
       }
     } catch (err) {
       console.error('Error accessing camera:', err);
-      setError('Unable to access camera. Please check permissions.');
+      setError('Unable to access camera. Please check permissions and try again.');
     }
   }, []);
 
@@ -119,48 +136,62 @@ const CnicCamera = ({ onCapture, onClose }) => {
       return;
     }
 
-    // Calculate CNIC crop dimensions
-    const videoWidth = video.videoWidth || video.clientWidth;
-    const videoHeight = video.videoHeight || video.clientHeight;
-    
-    console.log('Video dimensions:', videoWidth, 'x', videoHeight);
-    
-    if (videoWidth === 0 || videoHeight === 0) {
-      console.error('Invalid video dimensions');
-      return;
-    }
-    
-    // Calculate crop dimensions to maintain CNIC aspect ratio
-    let cropWidth, cropHeight;
-    
-    if (videoWidth / videoHeight > CNIC_ASPECT_RATIO) {
-      // Video is wider than CNIC ratio, crop width
-      cropHeight = videoHeight;
-      cropWidth = cropHeight * CNIC_ASPECT_RATIO;
-    } else {
-      // Video is taller than CNIC ratio, crop height
-      cropWidth = videoWidth;
-      cropHeight = cropWidth / CNIC_ASPECT_RATIO;
-    }
+   // Get video dimensions
+const videoWidth = video.videoWidth || video.clientWidth;
+const videoHeight = video.videoHeight || video.clientHeight;
 
-    // Center the crop
-    const startX = (videoWidth - cropWidth) / 2;
-    const startY = (videoHeight - cropHeight) / 2;
+console.log('Video dimensions:', videoWidth, 'x', videoHeight);
 
-    // Set canvas size to CNIC proportions (scale up for better quality)
-    const outputWidth = 856; // 85.6mm scaled up
-    const outputHeight = 540; // 53.98mm scaled up
-    
-    canvas.width = outputWidth;
-    canvas.height = outputHeight;
+if (videoWidth === 0 || videoHeight === 0) {
+  console.error('Invalid video dimensions');
+  return;
+}
 
-    try {
-      // Draw the cropped image
-      context.drawImage(
-        video,
-        startX, startY, cropWidth, cropHeight,
-        0, 0, outputWidth, outputHeight
-      );
+// Get the video element's display dimensions
+const videoElement = video;
+const displayWidth = videoElement.clientWidth;
+const displayHeight = videoElement.clientHeight;
+
+console.log('Display dimensions:', displayWidth, 'x', displayHeight);
+
+// Calculate the overlay box dimensions (80% of display width with CNIC aspect ratio)
+const overlayWidth = displayWidth * 0.8;
+const overlayHeight = overlayWidth / CNIC_ASPECT_RATIO;
+
+// Calculate overlay position (centered)
+const overlayX = (displayWidth - overlayWidth) / 2;
+const overlayY = (displayHeight - overlayHeight) / 2;
+
+console.log('Overlay box:', overlayX, overlayY, overlayWidth, overlayHeight);
+
+// Calculate scaling factors from display to actual video
+const scaleX = videoWidth / displayWidth;
+const scaleY = videoHeight / displayHeight;
+
+console.log('Scale factors:', scaleX, scaleY);
+
+// Convert overlay coordinates to actual video coordinates
+const cropX = overlayX * scaleX;
+const cropY = overlayY * scaleY;
+const cropWidth = overlayWidth * scaleX;
+const cropHeight = overlayHeight * scaleY;
+
+console.log('Crop area in video coordinates:', cropX, cropY, cropWidth, cropHeight);
+
+// Set canvas size to CNIC proportions (high quality)
+const outputWidth = 856; // 85.6mm scaled up
+const outputHeight = 540; // 53.98mm scaled up
+
+canvas.width = outputWidth;
+canvas.height = outputHeight;
+
+try {
+  // Draw only the cropped portion from the overlay area
+  context.drawImage(
+    video,
+    cropX, cropY, cropWidth, cropHeight, // Source rectangle (overlay area)
+    0, 0, outputWidth, outputHeight       // Destination rectangle (full canvas)
+  );
 
       // Convert to base64 for preview
       const imageDataUrl = canvas.toDataURL('image/jpeg', 0.9);
@@ -175,7 +206,7 @@ const CnicCamera = ({ onCapture, onClose }) => {
 
   const confirmCapture = useCallback(() => {
     if (!capturedImage) return;
-
+  
     // Convert base64 to blob and create file
     const canvas = canvasRef.current;
     canvas.toBlob((blob) => {
@@ -188,7 +219,12 @@ const CnicCamera = ({ onCapture, onClose }) => {
   const retakePhoto = useCallback(() => {
     setCapturedImage(null);
     setShowPreview(false);
-  }, []);
+    
+    // Force restart camera
+    setTimeout(() => {
+      startCamera();
+    }, 100);
+  }, [startCamera]);
 
   React.useEffect(() => {
     startCamera();
