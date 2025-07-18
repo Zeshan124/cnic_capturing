@@ -1,23 +1,12 @@
-"use client";
+'use client';
 
-import React, { useState, useRef, useCallback } from "react";
-import { LoadingOutlined, PlusOutlined, CameraOutlined, CloseOutlined } from "@ant-design/icons";
-import {
-  Form,
-  Input,
-  Upload,
-  Button,
-  Row,
-  Col,
-  Card,
-  notification,
-  message,
-  Modal
-} from "antd";
+import React, { useState, useRef, useCallback } from 'react';
+import { PlusOutlined, CameraOutlined, CloseOutlined } from '@ant-design/icons';
+import { Form, Input, Upload, Button, Row, Col, Card, notification, message, Modal } from 'antd';
 
-// Utility to convert base64 to File object (from your team)
+// Utilities
 const base64ToFile = (base64, fileName) => {
-  const arr = base64.split(",");
+  const arr = base64.split(',');
   const mime = arr[0].match(/:(.*?);/)[1];
   const bstr = atob(arr[1]);
   let n = bstr.length;
@@ -30,30 +19,24 @@ const base64ToFile = (base64, fileName) => {
 
 const getBase64 = (img, callback) => {
   const reader = new FileReader();
-  reader.addEventListener("load", () => callback(reader.result));
+  reader.addEventListener('load', () => callback(reader.result));
   reader.readAsDataURL(img);
 };
 
-const beforeUpload = (file) => {
-  // Allow all image types including camera images
-  const isImage = file.type.startsWith("image/");
-  if (!isImage) {
-    message.error("You can only upload image files!");
+const beforeUpload = file => {
+  if (!file.type.startsWith('image/')) {
+    message.error('You can only upload image files!');
     return false;
   }
-
-  // Check file size (2MB limit)
-  const isLt2M = file.size / 1024 / 1024 < 2;
-  if (!isLt2M) {
+  if (file.size / 1024 / 1024 >= 2) {
     notification.error({
-      message: "File Too Large",
-      description: "Image must be smaller than 2MB!",
-      placement: "topRight",
+      message: 'File Too Large',
+      description: 'Image must be smaller than 2MB!',
+      placement: 'topRight'
     });
     return false;
   }
-
-  return isImage && isLt2M;
+  return true;
 };
 
 // CNIC Camera Component
@@ -65,170 +48,104 @@ const CnicCamera = ({ onCapture, onClose }) => {
   const [capturedImage, setCapturedImage] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
 
-  // CNIC aspect ratio: 85.60 mm × 53.98 mm = 1.586:1
   const CNIC_ASPECT_RATIO = 1.586;
 
   const startCamera = useCallback(async () => {
     try {
       setError(null);
       setIsStreaming(false);
-      
-      // Stop any existing stream first
-      if (videoRef.current && videoRef.current.srcObject) {
-        const tracks = videoRef.current.srcObject.getTracks();
-        tracks.forEach(track => track.stop());
+
+      if (videoRef.current?.srcObject) {
+        videoRef.current.srcObject.getTracks().forEach(track => track.stop());
         videoRef.current.srcObject = null;
       }
-  
+
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'environment', // Use back camera
-          width: { ideal: 1920, min: 640 },
-          height: { ideal: 1080, min: 480 }
-        }
+        video: { facingMode: 'environment', width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 } }
       });
-  
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        
-        // Wait for video to load
         videoRef.current.onloadedmetadata = () => {
-          console.log('Video loaded, dimensions:', videoRef.current.videoWidth, 'x', videoRef.current.videoHeight);
-          videoRef.current.play().then(() => {
-            setIsStreaming(true);
-          }).catch((playError) => {
-            console.error('Error playing video:', playError);
-            setError('Unable to start camera playback.');
-          });
+          videoRef.current
+            .play()
+            .then(() => setIsStreaming(true))
+            .catch(() => setError('Unable to start camera.'));
         };
-        
-        videoRef.current.onerror = (error) => {
-          console.error('Video error:', error);
-          setError('Camera error occurred. Please try again.');
-        };
+        videoRef.current.onerror = () => setError('Camera error occurred.');
       }
     } catch (err) {
-      console.error('Error accessing camera:', err);
-      setError('Unable to access camera. Please check permissions and try again.');
+      setError('Unable to access camera. Please check permissions.');
     }
   }, []);
 
   const stopCamera = useCallback(() => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      const tracks = videoRef.current.srcObject.getTracks();
-      tracks.forEach(track => track.stop());
+    if (videoRef.current?.srcObject) {
+      videoRef.current.srcObject.getTracks().forEach(track => track.stop());
       videoRef.current.srcObject = null;
       setIsStreaming(false);
     }
   }, []);
 
   const captureImage = useCallback(() => {
-    if (!videoRef.current || !canvasRef.current) return;
-
     const video = videoRef.current;
     const canvas = canvasRef.current;
+    if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) return;
+
     const context = canvas.getContext('2d');
+    const { videoWidth = video.clientWidth, videoHeight = video.clientHeight } = video;
+    const { clientWidth: displayWidth, clientHeight: displayHeight } = video;
 
-    // Wait for video to be ready
-    if (video.readyState !== video.HAVE_ENOUGH_DATA) {
-      console.log('Video not ready, waiting...');
-      setTimeout(captureImage, 100);
-      return;
-    }
+    if (!videoWidth || !videoHeight) return;
 
-   // Get video dimensions
-const videoWidth = video.videoWidth || video.clientWidth;
-const videoHeight = video.videoHeight || video.clientHeight;
+    // Calculate overlay dimensions and position
+    const overlayWidth = displayWidth * 0.8;
+    const overlayHeight = overlayWidth / CNIC_ASPECT_RATIO;
+    const overlayX = (displayWidth - overlayWidth) / 2;
+    const overlayY = (displayHeight - overlayHeight) / 2;
 
-console.log('Video dimensions:', videoWidth, 'x', videoHeight);
+    // Scale to video coordinates
+    const scaleX = videoWidth / displayWidth;
+    const scaleY = videoHeight / displayHeight;
+    const cropX = overlayX * scaleX;
+    const cropY = overlayY * scaleY;
+    const cropWidth = overlayWidth * scaleX;
+    const cropHeight = overlayHeight * scaleY;
 
-if (videoWidth === 0 || videoHeight === 0) {
-  console.error('Invalid video dimensions');
-  return;
-}
+    // Set canvas and draw
+    canvas.width = 856;
+    canvas.height = 540;
 
-// Get the video element's display dimensions
-const videoElement = video;
-const displayWidth = videoElement.clientWidth;
-const displayHeight = videoElement.clientHeight;
-
-console.log('Display dimensions:', displayWidth, 'x', displayHeight);
-
-// Calculate the overlay box dimensions (80% of display width with CNIC aspect ratio)
-const overlayWidth = displayWidth * 0.8;
-const overlayHeight = overlayWidth / CNIC_ASPECT_RATIO;
-
-// Calculate overlay position (centered)
-const overlayX = (displayWidth - overlayWidth) / 2;
-const overlayY = (displayHeight - overlayHeight) / 2;
-
-console.log('Overlay box:', overlayX, overlayY, overlayWidth, overlayHeight);
-
-// Calculate scaling factors from display to actual video
-const scaleX = videoWidth / displayWidth;
-const scaleY = videoHeight / displayHeight;
-
-console.log('Scale factors:', scaleX, scaleY);
-
-// Convert overlay coordinates to actual video coordinates
-const cropX = overlayX * scaleX;
-const cropY = overlayY * scaleY;
-const cropWidth = overlayWidth * scaleX;
-const cropHeight = overlayHeight * scaleY;
-
-console.log('Crop area in video coordinates:', cropX, cropY, cropWidth, cropHeight);
-
-// Set canvas size to CNIC proportions (high quality)
-const outputWidth = 856; // 85.6mm scaled up
-const outputHeight = 540; // 53.98mm scaled up
-
-canvas.width = outputWidth;
-canvas.height = outputHeight;
-
-try {
-  // Draw only the cropped portion from the overlay area
-  context.drawImage(
-    video,
-    cropX, cropY, cropWidth, cropHeight, // Source rectangle (overlay area)
-    0, 0, outputWidth, outputHeight       // Destination rectangle (full canvas)
-  );
-
-      // Convert to base64 for preview
-      const imageDataUrl = canvas.toDataURL('image/jpeg', 0.9);
-      console.log('Image captured successfully');
-      setCapturedImage(imageDataUrl);
+    try {
+      context.drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, 856, 540);
+      setCapturedImage(canvas.toDataURL('image/jpeg', 0.9));
       setShowPreview(true);
     } catch (error) {
-      console.error('Error capturing image:', error);
-      message.error('Failed to capture image. Please try again.');
+      message.error('Failed to capture image.');
     }
   }, [CNIC_ASPECT_RATIO]);
 
   const confirmCapture = useCallback(() => {
     if (!capturedImage) return;
-  
-    // Convert base64 to blob and create file
-    const canvas = canvasRef.current;
-    canvas.toBlob((blob) => {
-      const file = new File([blob], `cnic-${Date.now()}.jpg`, { type: 'image/jpeg' });
-      onCapture(file);
-      stopCamera();
-    }, 'image/jpeg', 0.9);
+    canvasRef.current.toBlob(
+      blob => {
+        onCapture(new File([blob], `cnic-${Date.now()}.jpg`, { type: 'image/jpeg' }));
+        stopCamera();
+      },
+      'image/jpeg',
+      0.9
+    );
   }, [capturedImage, onCapture, stopCamera]);
 
   const retakePhoto = useCallback(() => {
     setCapturedImage(null);
     setShowPreview(false);
-    
-    // Force restart camera
-    setTimeout(() => {
-      startCamera();
-    }, 100);
+    setTimeout(startCamera, 100);
   }, [startCamera]);
 
   React.useEffect(() => {
     startCamera();
-    return () => stopCamera();
+    return stopCamera;
   }, [startCamera, stopCamera]);
 
   const handleClose = () => {
@@ -236,9 +153,98 @@ try {
     onClose();
   };
 
+  const renderPreview = () => (
+    <>
+      <div style={{ marginBottom: '20px' }}>
+        <img
+          src={capturedImage}
+          alt="Captured CNIC"
+          style={{
+            maxWidth: '100%',
+            maxHeight: '400px',
+            border: '2px solid #1890ff',
+            borderRadius: '8px',
+            objectFit: 'contain'
+          }}
+        />
+      </div>
+      <div style={{ marginBottom: '10px', color: '#666' }}>
+        <strong>Is this image clear and readable?</strong>
+        <br />
+        Make sure all text and details are visible
+      </div>
+      <div style={{ gap: '10px', display: 'flex', justifyContent: 'center' }}>
+        <Button type="primary" size="large" onClick={confirmCapture} style={{ minWidth: '120px' }}>
+          ✓ Use This Image
+        </Button>
+        <Button size="large" onClick={retakePhoto} style={{ minWidth: '120px' }}>
+          📷 Retake Photo
+        </Button>
+        <Button size="large" onClick={handleClose} style={{ minWidth: '120px' }}>
+          ✕ Cancel
+        </Button>
+      </div>
+    </>
+  );
+
+  const renderCamera = () => (
+    <>
+      <div style={{ position: 'relative', display: 'inline-block' }}>
+        <video
+          ref={videoRef}
+          style={{ width: '100%', maxWidth: '600px', height: 'auto', background: '#000' }}
+          playsInline
+          muted
+        />
+        <div
+          style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            border: '2px solid #1890ff',
+            borderRadius: '8px',
+            background: 'rgba(24, 144, 255, 0.1)',
+            width: '80%',
+            aspectRatio: `${CNIC_ASPECT_RATIO}`,
+            pointerEvents: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#1890ff',
+            fontSize: '14px',
+            fontWeight: 'bold',
+            textAlign: 'center',
+            textShadow: '0 0 4px rgba(0,0,0,0.5)'
+          }}
+        >
+          Place CNIC within this frame
+        </div>
+      </div>
+      <div style={{ marginTop: '20px', gap: '10px', display: 'flex', justifyContent: 'center' }}>
+        <Button
+          type="primary"
+          size="large"
+          onClick={captureImage}
+          disabled={!isStreaming}
+          icon={<CameraOutlined />}
+          style={{ minWidth: '140px' }}
+        >
+          {isStreaming ? 'Capture CNIC' : 'Loading...'}
+        </Button>
+        <Button size="large" onClick={handleClose} icon={<CloseOutlined />} style={{ minWidth: '100px' }}>
+          Cancel
+        </Button>
+      </div>
+      <div style={{ marginTop: '10px', color: '#666', fontSize: '12px' }}>
+        {isStreaming ? 'Position your CNIC within the blue frame and tap "Capture CNIC"' : 'Starting camera...'}
+      </div>
+    </>
+  );
+
   return (
     <Modal
-      title={showPreview ? "Preview Captured CNIC" : "Capture CNIC Image"}
+      title={showPreview ? 'Preview Captured CNIC' : 'Capture CNIC Image'}
       open={true}
       onCancel={handleClose}
       width={800}
@@ -255,135 +261,108 @@ try {
             </Button>
           </div>
         ) : showPreview ? (
-          // Preview Mode
-          <>
-            <div style={{ marginBottom: '20px' }}>
-              <img
-                src={capturedImage}
-                alt="Captured CNIC"
-                style={{
-                  maxWidth: '100%',
-                  maxHeight: '400px',
-                  border: '2px solid #1890ff',
-                  borderRadius: '8px',
-                  objectFit: 'contain'
-                }}
-              />
-            </div>
-            
-            <div style={{ marginBottom: '10px', color: '#666' }}>
-              <strong>Is this image clear and readable?</strong>
-              <br />
-              Make sure all text and details are visible
-            </div>
-
-            <div style={{ gap: '10px', display: 'flex', justifyContent: 'center' }}>
-              <Button
-                type="primary"
-                size="large"
-                onClick={confirmCapture}
-                style={{ minWidth: '120px' }}
-              >
-                ✓ Use This Image
-              </Button>
-              <Button
-                size="large"
-                onClick={retakePhoto}
-                style={{ minWidth: '120px' }}
-              >
-                📷 Retake Photo
-              </Button>
-              <Button
-                size="large"
-                onClick={handleClose}
-                style={{ minWidth: '120px' }}
-              >
-                ✕ Cancel
-              </Button>
-            </div>
-          </>
+          renderPreview()
         ) : (
-          // Camera Mode
-          <>
-            <div style={{ position: 'relative', display: 'inline-block' }}>
-              <video
-                ref={videoRef}
-                style={{
-                  width: '100%',
-                  maxWidth: '600px',
-                  height: 'auto',
-                  background: '#000'
-                }}
-                playsInline
-                muted
-              />
-              
-              {/* CNIC Overlay Guide */}
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '50%',
-                  left: '50%',
-                  transform: 'translate(-50%, -50%)',
-                  border: '2px solid #1890ff',
-                  borderRadius: '8px',
-                  background: 'rgba(24, 144, 255, 0.1)',
-                  width: '80%',
-                  aspectRatio: `${CNIC_ASPECT_RATIO}`,
-                  pointerEvents: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#1890ff',
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                  textAlign: 'center',
-                  textShadow: '0 0 4px rgba(0,0,0,0.5)'
-                }}
-              >
-                Place CNIC within this frame
-              </div>
-            </div>
-
-            <div style={{ marginTop: '20px', gap: '10px', display: 'flex', justifyContent: 'center' }}>
-              <Button
-                type="primary"
-                size="large"
-                onClick={captureImage}
-                disabled={!isStreaming}
-                icon={<CameraOutlined />}
-                style={{ minWidth: '140px' }}
-              >
-                {isStreaming ? 'Capture CNIC' : 'Loading...'}
-              </Button>
-              <Button
-                size="large"
-                onClick={handleClose}
-                icon={<CloseOutlined />}
-                style={{ minWidth: '100px' }}
-              >
-                Cancel
-              </Button>
-            </div>
-
-            <div style={{ marginTop: '10px', color: '#666', fontSize: '12px' }}>
-              {isStreaming ? 
-                'Position your CNIC within the blue frame and tap "Capture CNIC"' :
-                'Starting camera...'
-              }
-            </div>
-          </>
+          renderCamera()
         )}
       </div>
-      
-      <canvas
-        ref={canvasRef}
-        style={{ display: 'none' }}
-      />
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
     </Modal>
   );
 };
 
+// Custom Uploader Component
+const CustomUploader = ({ fieldName, title, imagePreviews, onFileChange, onCameraOpen }) => {
+  const uploadButton = (
+    <button style={{ border: 0, background: 'none' }} type="button">
+      <PlusOutlined />
+      <div style={{ marginTop: 8 }}>{title}</div>
+    </button>
+  );
+
+  return (
+    <div>
+      <Upload
+        name={fieldName}
+        listType="picture-card"
+        className="avatar-uploader"
+        showUploadList={false}
+        beforeUpload={() => false}
+        onChange={onFileChange(fieldName)}
+        accept="image/*"
+      >
+        {imagePreviews[fieldName] ? (
+          <img
+            src={imagePreviews[fieldName]}
+            alt={fieldName}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        ) : (
+          uploadButton
+        )}
+      </Upload>
+      <Button
+        type="primary"
+        size="small"
+        style={{ marginTop: '8px', width: '100%' }}
+        onClick={() => onCameraOpen(fieldName)}
+        icon={<CameraOutlined />}
+      >
+        Capture CNIC
+      </Button>
+    </div>
+  );
+};
+
+// Form Fields Configuration
+const FORM_FIELDS = [
+  [
+    { label: 'Order ID', name: 'orderID', placeholder: 'Enter order ID' },
+    { label: 'Full Name', name: 'fullName', placeholder: 'Enter full name' },
+    { label: 'Father Name', name: 'fatherName', placeholder: 'Enter father name' }
+  ],
+  [
+    { label: 'Mother Name', name: 'motherName', placeholder: 'Enter mother name' },
+    { label: 'CNIC', name: 'cnic', placeholder: 'Enter CNIC number' },
+    { label: 'Phone Number', name: 'phoneNo', placeholder: 'Enter phone number' }
+  ],
+  [
+    { label: 'Date of Issue', name: 'dateOfIssue', placeholder: 'YYYY-MM-DD' },
+    { label: 'Date of Expiry', name: 'dateOfExpiry', placeholder: 'YYYY-MM-DD' },
+    { label: 'Date of Birth', name: 'dateOfBirth', placeholder: 'YYYY-MM-DD' }
+  ],
+  [
+    { label: 'Place of Birth', name: 'PlaceOfBirth', placeholder: 'Enter place of birth' },
+    { label: 'Source of Earning', name: 'sourceOfEarning', placeholder: 'Enter source of earning' },
+    { label: 'Income', name: 'income', placeholder: 'Enter income amount' }
+  ]
+];
+
+// Customer Information Component
+const CustomerInformation = () => (
+  <Card title="Customer Information" style={{ marginBottom: '20px' }}>
+    {FORM_FIELDS.map((row, index) => (
+      <Row gutter={16} key={index}>
+        {row.map(field => (
+          <Col span={8} key={field.name}>
+            <Form.Item label={field.label} name={field.name}>
+              <Input placeholder={field.placeholder} />
+            </Form.Item>
+          </Col>
+        ))}
+      </Row>
+    ))}
+    <Row gutter={16}>
+      <Col span={24}>
+        <Form.Item label="Address" name="address">
+          <Input.TextArea rows={2} placeholder="Enter complete address" />
+        </Form.Item>
+      </Col>
+    </Row>
+  </Card>
+);
+
+// Main App Component
 const App = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
@@ -392,312 +371,114 @@ const App = () => {
   const [showCamera, setShowCamera] = useState(false);
   const [currentCameraField, setCurrentCameraField] = useState(null);
 
-  // Handle file selection for each upload field
-  const handleFileChange = (fieldName) => (info) => {
-    if (info.file.status !== "uploading") {
-      let file = info.file.originFileObj || info.file;
+  const handleFileChange = fieldName => info => {
+    if (info.file.status === 'uploading') return;
 
-      // Handle base64 conversion if needed
-      if (typeof file === "string" && file.startsWith("data:")) {
-        console.log("Converting base64 to File object for", fieldName);
-        file = base64ToFile(file, `${fieldName}-${Date.now()}.jpg`);
-      }
+    if (!validateFile(info.file.originFileObj || info.file)) return;
 
-      // Update file list
-      setFileList((prev) => ({
-        ...prev,
-        [fieldName]: file,
-      }));
-
-      // Generate preview
-      getBase64(file, (url) => {
-        setImagePreviews((prev) => ({
-          ...prev,
-          [fieldName]: url,
-        }));
-      });
-
-      console.log(`File selected for ${fieldName}:`, file);
+    let file = info.file.originFileObj || info.file;
+    if (typeof file === 'string' && file.startsWith('data:')) {
+      file = base64ToFile(file, `${fieldName}-${Date.now()}.jpg`);
     }
+
+    setFileList(prev => ({ ...prev, [fieldName]: file }));
+    getBase64(file, url => setImagePreviews(prev => ({ ...prev, [fieldName]: url })));
   };
 
-  // Handle camera capture
-  const handleCameraCapture = (file) => {
+  const handleCameraCapture = file => {
     if (currentCameraField) {
-      // Update file list
-      setFileList((prev) => ({
-        ...prev,
-        [currentCameraField]: file,
-      }));
-
-      // Generate preview
-      getBase64(file, (url) => {
-        setImagePreviews((prev) => ({
-          ...prev,
-          [currentCameraField]: url,
-        }));
-      });
-
-      console.log(`Camera captured for ${currentCameraField}:`, file);
+      setFileList(prev => ({ ...prev, [currentCameraField]: file }));
+      getBase64(file, url => setImagePreviews(prev => ({ ...prev, [currentCameraField]: url })));
     }
     setShowCamera(false);
     setCurrentCameraField(null);
   };
 
-  // Open camera for specific field
-  const openCamera = (fieldName) => {
+  const openCamera = fieldName => {
     setCurrentCameraField(fieldName);
     setShowCamera(true);
   };
 
-  // Submit form with all data
-  const handleSubmit = async (values) => {
+  const handleSubmit = async values => {
     setLoading(true);
-
-    notification.info({
-      message: "Submitting...",
-      description: "Submitting update...",
-      placement: "topRight",
-    });
+    notification.info({ message: 'Submitting...', description: 'Submitting update...', placement: 'topRight' });
 
     try {
       const formData = new FormData();
-
       Object.entries(values).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== "") {
-          formData.append(key, value);
-        }
+        if (value !== undefined && value !== null && value !== '') formData.append(key, value);
       });
-
       Object.entries(fileList).forEach(([key, file]) => {
-        if (file) {
-          formData.append(key, file);
-        }
+        if (file) formData.append(key, file);
       });
 
-      // Force PATCH only
-      const endpoint = "https://boms.qistbazaar.pk/api/order/greenform/update";
-
-      const response = await fetch(endpoint, {
-        method: "PATCH",
+      const response = await fetch('https://boms.qistbazaar.pk/api/order/greenform/update', {
+        method: 'PATCH',
         body: formData,
         headers: {
-          "x-access-token":
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjUsInJvbGUiOjQsImJyYW5jaCI6MzAsImlhdCI6MTc1MjczNjgwMywiZXhwIjoxNzUyNzcyODAzfQ.8qbwNxU30SvCWztPYwIqhr4NZu9cPLTKWaxn_i6T7vA",
-        },
+          'x-access-token':
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjUsInJvbGUiOjQsImJyYW5jaCI6MzAsImlhdCI6MTc1MjgyNTQ5MiwiZXhwIjoxNzUyODYxNDkyfQ.rx8nYSSrlurKb_S2Ok6IvhBE7kzsVNUVVDJtod67lRw'
+        }
       });
 
-      // Enhanced debugging
-      console.log("Response status:", response.status);
-      console.log("Response ok:", response.ok);
-      console.log("Response headers:", response.headers);
-
       if (response.ok) {
-        let result;
-        try {
-          result = await response.json();
-          console.log("API Success Response:", result);
-        } catch (jsonError) {
-          console.warn("Could not parse JSON response:", jsonError);
-          result = await response.text();
-          console.log("Response as text:", result);
-        }
-
-        // This should now show the success notification
         notification.success({
-          message: "Success",
-          description: "Order updated successfully!",
-          placement: "topRight",
-          duration: 6, // Show for 6 seconds
+          message: 'Success',
+          description: 'Order updated successfully!',
+          placement: 'topRight',
+          duration: 6
         });
-
         form.resetFields();
         setFileList({});
         setImagePreviews({});
       } else {
-        const errorText = await response.text();
-        console.error("API Error Response:", errorText);
-        console.error("Response status:", response.status);
-        
         notification.error({
-          message: "Update Failed",
-          description: `Failed to update order (Status: ${response.status}). Please check your data and try again.`,
-          placement: "topRight",
-          duration: 8,
+          message: 'Update Failed',
+          description: `Failed to update order (Status: ${response.status}).`,
+          placement: 'topRight',
+          duration: 8
         });
       }
     } catch (error) {
-      console.error("Submit error:", error);
       notification.error({
-        message: "Error",
-        description: `Update failed: ${
-          error.message || "Unknown error occurred"
-        }`,
-        placement: "topRight",
-        duration: 8,
+        message: 'Error',
+        description: `Update failed: ${error.message || 'Unknown error'}`,
+        placement: 'topRight',
+        duration: 8
       });
     } finally {
       setLoading(false);
     }
   };
 
-  // Custom uploader component with camera option
-  const CustomUploader = ({ fieldName, title }) => {
-    const uploadButton = (
-      <button style={{ border: 0, background: "none" }} type="button">
-        <PlusOutlined />
-        <div style={{ marginTop: 8 }}>{title}</div>
-      </button>
-    );
-
-    return (
-      <div>
-        <Upload
-          name={fieldName}
-          listType="picture-card"
-          className="avatar-uploader"
-          showUploadList={false}
-          beforeUpload={() => false} // Prevent auto upload
-          onChange={handleFileChange(fieldName)}
-          accept="image/*"
-        >
-          {imagePreviews[fieldName] ? (
-            <img
-              src={imagePreviews[fieldName]}
-              alt={fieldName}
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
-          ) : (
-            uploadButton
-          )}
-        </Upload>
-        
-        {/* Camera Button */}
-        <Button
-          type="primary"
-          size="small"
-          style={{ marginTop: '8px', width: '100%' }}
-          onClick={() => openCamera(fieldName)}
-          icon={<CameraOutlined />}
-        >
-          Capture CNIC
-        </Button>
-      </div>
-    );
-  };
-
   return (
-    <div style={{ padding: "20px", maxWidth: "1200px", margin: "0 auto" }}>
+    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
       <Form form={form} layout="vertical" onFinish={handleSubmit}>
-        {/* Customer Information */}
-        <Card title="Customer Information" style={{ marginBottom: "20px" }}>
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item label="Order ID" name="orderID">
-                <Input placeholder="Enter order ID" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item label="Full Name" name="fullName">
-                <Input placeholder="Enter full name" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item label="Father Name" name="fatherName">
-                <Input placeholder="Enter father name" />
-              </Form.Item>
-            </Col>
-          </Row>
+        <CustomerInformation />
 
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item label="Mother Name" name="motherName">
-                <Input placeholder="Enter mother name" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item label="CNIC" name="cnic">
-                <Input placeholder="Enter CNIC number" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item label="Phone Number" name="phoneNo">
-                <Input placeholder="Enter phone number" />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item label="Date of Issue" name="dateOfIssue">
-                <Input placeholder="YYYY-MM-DD" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item label="Date of Expiry" name="dateOfExpiry">
-                <Input placeholder="YYYY-MM-DD" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item label="Date of Birth" name="dateOfBirth">
-                <Input placeholder="YYYY-MM-DD" />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item label="Place of Birth" name="PlaceOfBirth">
-                <Input placeholder="Enter place of birth" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item label="Source of Earning" name="sourceOfEarning">
-                <Input placeholder="Enter source of earning" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item label="Income" name="income">
-                <Input placeholder="Enter income amount" />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={16}>
-            <Col span={24}>
-              <Form.Item label="Address" name="address">
-                <Input.TextArea rows={2} placeholder="Enter complete address" />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
-
-        {/* Document Uploads */}
-        <Card title="Document Uploads" style={{ marginBottom: "20px" }}>
+        <Card title="Document Uploads" style={{ marginBottom: '20px' }}>
           <Row gutter={16}>
             <Col span={6}>
-              <div style={{ textAlign: "center" }}>
-                <CustomUploader fieldName="acknowledgement" title="Upload CNIC" />
+              <div style={{ textAlign: 'center' }}>
+                <CustomUploader
+                  fieldName="acknowledgement"
+                  title="Upload CNIC"
+                  imagePreviews={imagePreviews}
+                  onFileChange={handleFileChange}
+                  onCameraOpen={openCamera}
+                />
               </div>
             </Col>
           </Row>
         </Card>
 
-        {/* Submit Button */}
         <Form.Item>
-          <Button
-            type="primary"
-            htmlType="submit"
-            loading={loading}
-            size="large"
-            style={{ width: "200px" }}
-          >
-            {loading ? "Processing..." : "Submit/Update Order"}
+          <Button type="primary" htmlType="submit" loading={loading} size="large" style={{ width: '200px' }}>
+            {loading ? 'Processing...' : 'Submit/Update Order'}
           </Button>
         </Form.Item>
       </Form>
 
-      {/* Camera Modal */}
       {showCamera && (
         <CnicCamera
           onCapture={handleCameraCapture}

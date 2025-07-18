@@ -2,7 +2,7 @@
 const nextConfig = {
   // Transpile Ant Design packages for better compatibility
   transpilePackages: ['antd', '@ant-design/icons'],
-  
+
   experimental: {
     // Your existing turbo configuration
     turbo: {
@@ -16,13 +16,13 @@ const nextConfig = {
     // Better ESM handling
     esmExternals: 'loose'
   },
-  
+
   // Improve build performance and compatibility
   compiler: {
     // Remove console logs in production
     removeConsole: process.env.NODE_ENV === 'production'
   },
-  
+
   // Better webpack configuration for Ant Design
   webpack: (config, { dev, isServer }) => {
     // Ant Design optimization
@@ -30,10 +30,10 @@ const nextConfig = {
       config.resolve.alias = {
         ...config.resolve.alias,
         '@ant-design/icons/lib': '@ant-design/icons/es'
-      }
+      };
     }
-    return config
+    return config;
   }
-}
+};
 
-module.exports = nextConfig
+module.exports = nextConfig;
