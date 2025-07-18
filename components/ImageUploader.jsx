@@ -23,7 +23,7 @@ const getBase64 = (img, callback) => {
   reader.readAsDataURL(img);
 };
 
-const beforeUpload = file => {
+const validateFile = file => {
   if (!file.type.startsWith('image/')) {
     message.error('You can only upload image files!');
     return false;
@@ -67,10 +67,7 @@ const CnicCamera = ({ onCapture, onClose }) => {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.onloadedmetadata = () => {
-          videoRef.current
-            .play()
-            .then(() => setIsStreaming(true))
-            .catch(() => setError('Unable to start camera.'));
+          videoRef.current.play().then(() => setIsStreaming(true)).catch(() => setError('Unable to start camera.'));
         };
         videoRef.current.onerror = () => setError('Camera error occurred.');
       }
@@ -115,7 +112,7 @@ const CnicCamera = ({ onCapture, onClose }) => {
     // Set canvas and draw
     canvas.width = 856;
     canvas.height = 540;
-
+    
     try {
       context.drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, 856, 540);
       setCapturedImage(canvas.toDataURL('image/jpeg', 0.9));
@@ -127,14 +124,10 @@ const CnicCamera = ({ onCapture, onClose }) => {
 
   const confirmCapture = useCallback(() => {
     if (!capturedImage) return;
-    canvasRef.current.toBlob(
-      blob => {
-        onCapture(new File([blob], `cnic-${Date.now()}.jpg`, { type: 'image/jpeg' }));
-        stopCamera();
-      },
-      'image/jpeg',
-      0.9
-    );
+    canvasRef.current.toBlob(blob => {
+      onCapture(new File([blob], `cnic-${Date.now()}.jpg`, { type: 'image/jpeg' }));
+      stopCamera();
+    }, 'image/jpeg', 0.9);
   }, [capturedImage, onCapture, stopCamera]);
 
   const retakePhoto = useCallback(() => {
@@ -159,30 +152,16 @@ const CnicCamera = ({ onCapture, onClose }) => {
         <img
           src={capturedImage}
           alt="Captured CNIC"
-          style={{
-            maxWidth: '100%',
-            maxHeight: '400px',
-            border: '2px solid #1890ff',
-            borderRadius: '8px',
-            objectFit: 'contain'
-          }}
+          style={{ maxWidth: '100%', maxHeight: '400px', border: '2px solid #1890ff', borderRadius: '8px', objectFit: 'contain' }}
         />
       </div>
       <div style={{ marginBottom: '10px', color: '#666' }}>
-        <strong>Is this image clear and readable?</strong>
-        <br />
-        Make sure all text and details are visible
+        <strong>Is this image clear and readable?</strong><br />Make sure all text and details are visible
       </div>
       <div style={{ gap: '10px', display: 'flex', justifyContent: 'center' }}>
-        <Button type="primary" size="large" onClick={confirmCapture} style={{ minWidth: '120px' }}>
-          ✓ Use This Image
-        </Button>
-        <Button size="large" onClick={retakePhoto} style={{ minWidth: '120px' }}>
-          📷 Retake Photo
-        </Button>
-        <Button size="large" onClick={handleClose} style={{ minWidth: '120px' }}>
-          ✕ Cancel
-        </Button>
+        <Button type="primary" size="large" onClick={confirmCapture} style={{ minWidth: '120px' }}>✓ Use This Image</Button>
+        <Button size="large" onClick={retakePhoto} style={{ minWidth: '120px' }}>📷 Retake Photo</Button>
+        <Button size="large" onClick={handleClose} style={{ minWidth: '120px' }}>✕ Cancel</Button>
       </div>
     </>
   );
@@ -190,51 +169,24 @@ const CnicCamera = ({ onCapture, onClose }) => {
   const renderCamera = () => (
     <>
       <div style={{ position: 'relative', display: 'inline-block' }}>
-        <video
-          ref={videoRef}
-          style={{ width: '100%', maxWidth: '600px', height: 'auto', background: '#000' }}
-          playsInline
-          muted
-        />
+        <video ref={videoRef} style={{ width: '100%', maxWidth: '600px', height: 'auto', background: '#000' }} playsInline muted />
         <div
           style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            border: '2px solid #1890ff',
-            borderRadius: '8px',
-            background: 'rgba(24, 144, 255, 0.1)',
-            width: '80%',
-            aspectRatio: `${CNIC_ASPECT_RATIO}`,
-            pointerEvents: 'none',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#1890ff',
-            fontSize: '14px',
-            fontWeight: 'bold',
-            textAlign: 'center',
-            textShadow: '0 0 4px rgba(0,0,0,0.5)'
+            position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            border: '2px solid #1890ff', borderRadius: '8px', background: 'rgba(24, 144, 255, 0.1)',
+            width: '80%', aspectRatio: `${CNIC_ASPECT_RATIO}`, pointerEvents: 'none',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#1890ff', fontSize: '14px', fontWeight: 'bold', textAlign: 'center', textShadow: '0 0 4px rgba(0,0,0,0.5)'
           }}
         >
           Place CNIC within this frame
         </div>
       </div>
       <div style={{ marginTop: '20px', gap: '10px', display: 'flex', justifyContent: 'center' }}>
-        <Button
-          type="primary"
-          size="large"
-          onClick={captureImage}
-          disabled={!isStreaming}
-          icon={<CameraOutlined />}
-          style={{ minWidth: '140px' }}
-        >
+        <Button type="primary" size="large" onClick={captureImage} disabled={!isStreaming} icon={<CameraOutlined />} style={{ minWidth: '140px' }}>
           {isStreaming ? 'Capture CNIC' : 'Loading...'}
         </Button>
-        <Button size="large" onClick={handleClose} icon={<CloseOutlined />} style={{ minWidth: '100px' }}>
-          Cancel
-        </Button>
+        <Button size="large" onClick={handleClose} icon={<CloseOutlined />} style={{ minWidth: '100px' }}>Cancel</Button>
       </div>
       <div style={{ marginTop: '10px', color: '#666', fontSize: '12px' }}>
         {isStreaming ? 'Position your CNIC within the blue frame and tap "Capture CNIC"' : 'Starting camera...'}
@@ -254,17 +206,10 @@ const CnicCamera = ({ onCapture, onClose }) => {
       <div style={{ textAlign: 'center' }}>
         {error ? (
           <div style={{ color: 'red', padding: '20px' }}>
-            {error}
-            <br />
-            <Button onClick={startCamera} style={{ marginTop: '10px' }}>
-              Try Again
-            </Button>
+            {error}<br />
+            <Button onClick={startCamera} style={{ marginTop: '10px' }}>Try Again</Button>
           </div>
-        ) : showPreview ? (
-          renderPreview()
-        ) : (
-          renderCamera()
-        )}
+        ) : showPreview ? renderPreview() : renderCamera()}
       </div>
       <canvas ref={canvasRef} style={{ display: 'none' }} />
     </Modal>
@@ -292,22 +237,10 @@ const CustomUploader = ({ fieldName, title, imagePreviews, onFileChange, onCamer
         accept="image/*"
       >
         {imagePreviews[fieldName] ? (
-          <img
-            src={imagePreviews[fieldName]}
-            alt={fieldName}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          />
-        ) : (
-          uploadButton
-        )}
+          <img src={imagePreviews[fieldName]} alt={fieldName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : uploadButton}
       </Upload>
-      <Button
-        type="primary"
-        size="small"
-        style={{ marginTop: '8px', width: '100%' }}
-        onClick={() => onCameraOpen(fieldName)}
-        icon={<CameraOutlined />}
-      >
+      <Button type="primary" size="small" style={{ marginTop: '8px', width: '100%' }} onClick={() => onCameraOpen(fieldName)} icon={<CameraOutlined />}>
         Capture CNIC
       </Button>
     </div>
@@ -362,6 +295,72 @@ const CustomerInformation = () => (
   </Card>
 );
 
+// Token Management
+const TOKEN_KEY = 'app_token';
+const LOGIN_CREDENTIALS = {
+  username: "arif",
+  password: "qB(*&^%2aAi42907"
+};
+
+const loginAndGetToken = async () => {
+  try {
+    const response = await fetch('https://boms.qistbazaar.pk/api/user/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(LOGIN_CREDENTIALS)
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const token = data.token || data.accessToken || data['x-access-token'];
+      if (token) {
+        // Store token in memory (not localStorage due to artifacts limitation)
+        window.currentToken = token;
+        console.log('New token obtained successfully');
+        return token;
+      }
+    }
+    throw new Error('Failed to get token from login response');
+  } catch (error) {
+    console.error('Login failed:', error);
+    throw error;
+  }
+};
+
+const getValidToken = async () => {
+  // Try to use existing token first
+  if (window.currentToken) {
+    return window.currentToken;
+  }
+  
+  // Get new token if none exists
+  return await loginAndGetToken();
+};
+
+const makeAuthenticatedRequest = async (url, options = {}) => {
+  let token = await getValidToken();
+  
+  const requestOptions = {
+    ...options,
+    headers: {
+      ...options.headers,
+      'x-access-token': token
+    }
+  };
+
+  let response = await fetch(url, requestOptions);
+
+  // If token expired (401/403), get new token and retry
+  if (response.status === 401 || response.status === 403) {
+    console.log('Token expired, getting new token...');
+    token = await loginAndGetToken();
+    requestOptions.headers['x-access-token'] = token;
+    response = await fetch(url, requestOptions);
+  }
+
+  return response;
+};
+
 // Main App Component
 const App = () => {
   const [form] = Form.useForm();
@@ -373,9 +372,7 @@ const App = () => {
 
   const handleFileChange = fieldName => info => {
     if (info.file.status === 'uploading') return;
-
-    if (!validateFile(info.file.originFileObj || info.file)) return;
-
+    
     let file = info.file.originFileObj || info.file;
     if (typeof file === 'string' && file.startsWith('data:')) {
       file = base64ToFile(file, `${fieldName}-${Date.now()}.jpg`);
@@ -412,40 +409,51 @@ const App = () => {
         if (file) formData.append(key, file);
       });
 
-      const response = await fetch('https://boms.qistbazaar.pk/api/order/greenform/update', {
+      // Use authenticated request with automatic token management
+      const response = await makeAuthenticatedRequest('https://boms.qistbazaar.pk/api/order/greenform/update', {
         method: 'PATCH',
-        body: formData,
-        headers: {
-          'x-access-token':
-            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjUsInJvbGUiOjQsImJyYW5jaCI6MzAsImlhdCI6MTc1MjgyNTQ5MiwiZXhwIjoxNzUyODYxNDkyfQ.rx8nYSSrlurKb_S2Ok6IvhBE7kzsVNUVVDJtod67lRw'
-        }
+        body: formData
       });
 
       if (response.ok) {
-        notification.success({
-          message: 'Success',
-          description: 'Order updated successfully!',
-          placement: 'topRight',
-          duration: 6
+        notification.success({ 
+          message: 'Success', 
+          description: 'Order updated successfully!', 
+          placement: 'topRight', 
+          duration: 6 
         });
         form.resetFields();
         setFileList({});
         setImagePreviews({});
       } else {
+        const errorText = await response.text();
+        console.error('API Error:', errorText);
         notification.error({
           message: 'Update Failed',
-          description: `Failed to update order (Status: ${response.status}).`,
+          description: `Failed to update order (Status: ${response.status}). Please try again.`,
           placement: 'topRight',
           duration: 8
         });
       }
     } catch (error) {
-      notification.error({
-        message: 'Error',
-        description: `Update failed: ${error.message || 'Unknown error'}`,
-        placement: 'topRight',
-        duration: 8
-      });
+      console.error('Submit error:', error);
+      
+      // Handle specific login/token errors
+      if (error.message.includes('token') || error.message.includes('login')) {
+        notification.error({
+          message: 'Authentication Error',
+          description: 'Login failed. Please check credentials and try again.',
+          placement: 'topRight',
+          duration: 8
+        });
+      } else {
+        notification.error({
+          message: 'Error',
+          description: `Update failed: ${error.message || 'Unknown error'}`,
+          placement: 'topRight',
+          duration: 8
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -455,7 +463,7 @@ const App = () => {
     <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
       <Form form={form} layout="vertical" onFinish={handleSubmit}>
         <CustomerInformation />
-
+        
         <Card title="Document Uploads" style={{ marginBottom: '20px' }}>
           <Row gutter={16}>
             <Col span={6}>
